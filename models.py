@@ -51,7 +51,7 @@ class BoundCollapsingTta(pyddm.models.Bound):
 
 
 class ModelDynamicDriftCollapsingBounds():
-    T_dur = 4.0
+    T_dur = 4.5
     param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "b_0", "k", "tta_crit",
                    "ndt_location", "ndt_scale"]
 

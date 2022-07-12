@@ -56,29 +56,31 @@ def write_to_csv(directory, filename, array, write_mode="a"):
 
 
 def fit_model(model, training_data, loss_function):
-    training_sample = pyddm.Sample.from_pandas_dataframe(df=training_data,
-                                                       rt_column_name="RT",
-                                                       correct_column_name="is_gap_accepted")
-    return pyddm.fit_adjust_model(sample=training_sample, model=model, lossfunction=loss_function, verbose=False)
+    training_sample = pyddm.Sample.from_pandas_dataframe(df=training_data, rt_column_name="RT",
+                                                         correct_column_name="is_gap_accepted")
+    fitted_model = pyddm.fit_adjust_model(sample=training_sample, model=model, lossfunction=loss_function, verbose=False)
+    # pyddm.plot.plot_fit_diagnostics(model=fitted_model, sample=training_sample)
+
+    return fitted_model
 
 
 def get_psf_ci(data):
     # psf: psychometric function
     # ci: dataframe with confidence intervals for probability per coherence
-    tta_conditions = np.sort(data.tta_condition.unique())
+    d_conditions = np.sort(data.d_condition.unique())
 
-    psf = np.array([len(data[data.is_go_decision & (data.tta_condition == tta_condition)])
-                    / len(data[data.tta_condition == tta_condition])
-                    if len(data[(data.tta_condition == tta_condition)]) > 0 else np.NaN
-                    for tta_condition in np.sort(data.tta_condition.unique())])
+    psf = np.array([len(data[data.is_gap_accepted & (data.d_condition == d_condition)])
+                    / len(data[data.d_condition == d_condition])
+                    if len(data[(data.d_condition == d_condition)]) > 0 else np.NaN
+                    for d_condition in np.sort(data.d_condition.unique())])
 
-    ci = pd.DataFrame(psf, columns=["p_go"], index=tta_conditions)
+    ci = pd.DataFrame(psf, columns=["p_go"], index=d_conditions)
 
-    n = [len(data[(data.tta_condition == tta_condition)]) for tta_condition in tta_conditions]
+    n = [len(data[(data.d_condition == d_condition)]) for d_condition in d_conditions]
     ci["ci_l"] = ci["p_go"] - np.sqrt(psf * (1 - psf) / n)
     ci["ci_r"] = ci["p_go"] + np.sqrt(psf * (1 - psf) / n)
 
-    return ci.reset_index().rename(columns={"index": "tta_condition"})
+    return ci.reset_index().rename(columns={"index": "d_condition"})
 
 
 def get_mean_sem(data, var="RT", groupby_var="tta_condition", n_cutoff=2):

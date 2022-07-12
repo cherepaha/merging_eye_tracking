@@ -1,3 +1,5 @@
+import pyddm
+
 import models
 import loss_functions
 import pandas as pd
@@ -5,7 +7,7 @@ import helper
 import os
 
 
-def fit_model_by_condition(subj_idx=0):
+def fit_model_by_condition(subj_idx=0, loss="vincent"):
     '''
     NB: This script can (and should) be run in parallel in several different python consoles, one subject per console
     model_idx: 1 for the full model described in the paper; 2 for the model with fixed bounds; 3 for "vanilla" DDM
@@ -21,35 +23,20 @@ def fit_model_by_condition(subj_idx=0):
     model = models.ModelDynamicDriftCollapsingBounds()
 
     exp_data = pd.read_csv("measures.csv")
-    exp_data = exp_data.rename(columns={"Participant_no": "subj_id",
-                                        "Time_gap_onramp": "tta_or_condition",
-                                        "Time_gap_upcoming_vehicle": "tta_condition",
-                                        "Distance_gap_upcoming_vehicle": "d_condition",
-                                        "Is_gap_accepted": "is_gap_accepted",
-                                        "Response_time": "RT",
-                                        "Dwell_to_mirror": "dwell_time"})
-    exp_data["is_gap_accepted"] = exp_data["is_gap_accepted"].astype("bool")
-
-    exp_data["RT"] /= 1000
-
     subjects = exp_data.subj_id.unique()
-
-    conditions = [{"tta": tta, "d": d}
-                  for tta in exp_data.tta_condition.unique()
-                  for d in exp_data.d_condition.unique()]
 
     if subj_idx == "all":
         subj_id = "all"
         subj_data = exp_data
-        loss = loss_functions.LossWLSVincent
+        loss = loss_functions.LossWLSVincent if loss=="vincent" else pyddm.LossRobustBIC
     else:
         subj_id = subjects[subj_idx]
         subj_data = exp_data[(exp_data.subj_id == subj_id)]
         loss = loss_functions.LossWLS
 
-    output_directory = "model_fit_results/"
+    output_directory = "model_fit_results"
 
-    file_name = "subj_%s.csv" % (str(subj_id))
+    file_name = "subj_%s_parameters_fitted.csv" % (str(subj_id))
     if not os.path.isfile(os.path.join(output_directory, file_name)):
         helper.write_to_csv(output_directory, file_name, ["subj_id", "loss"] + model.param_names, write_mode="w")
 
@@ -66,6 +53,6 @@ def fit_model_by_condition(subj_idx=0):
     return fitted_model
 
 
-fit_model_by_condition(subj_idx="all")
+fitted_model = fit_model_by_condition(subj_idx="all", loss="robustBIC")
 
 
