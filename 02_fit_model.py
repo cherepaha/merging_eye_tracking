@@ -23,6 +23,7 @@ def fit_model_by_condition(subj_idx=0, loss="vincent"):
     model = models.ModelDynamicDriftCollapsingBounds()
 
     exp_data = pd.read_csv("measures.csv")
+    exp_data = exp_data[exp_data.RT<4.5]
     subjects = exp_data.subj_id.unique()
 
     if subj_idx == "all":

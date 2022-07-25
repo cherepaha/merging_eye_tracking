@@ -41,18 +41,20 @@ class DriftTtaDistance(pyddm.models.Drift):
 
 
 class BoundCollapsingTta(pyddm.models.Bound):
+    # TODO: check if parameter r could be replaced with beta_tta_or
     name = "Bounds dynamically collapsing with TTA"
-    required_parameters = ["b_0", "k", "tta_crit"]
+    required_parameters = ["b_0", "k", "r", "tta_crit"]
     required_conditions = ["tta_condition", "d_condition", "tta_or_condition"]
 
     def get_bound(self, t, conditions, **kwargs):
         tau = conditions["tta_condition"] - t
-        return self.b_0 / (1 + np.exp(-self.k * (tau - self.tta_crit)))
+        tau_or = conditions["tta_or_condition"] - t
+        return self.b_0 / (1 + np.exp(-self.k * (tau + self.r * tau_or - self.tta_crit)))
 
 
-class ModelDynamicDriftCollapsingBounds():
+class ModelDynamicDriftCollapsingBounds:
     T_dur = 4.5
-    param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "b_0", "k", "tta_crit",
+    param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "b_0", "k", "r", "tta_crit",
                    "ndt_location", "ndt_scale"]
 
     def __init__(self):
@@ -63,10 +65,11 @@ class ModelDynamicDriftCollapsingBounds():
                                       beta_tta_or=pyddm.Fittable(minval=0, maxval=1.0),
                                       theta=pyddm.Fittable(minval=0, maxval=20))
 
-        self.bound = BoundCollapsingTta(b_0=pyddm.Fittable(minval=0.5, maxval=5),
-                                        k=pyddm.Fittable(minval=0.1, maxval=2),
-                                        tta_crit=pyddm.Fittable(minval=3, maxval=6))
+        self.bound = BoundCollapsingTta(b_0=pyddm.Fittable(minval=0.5, maxval=5.0),
+                                        k=pyddm.Fittable(minval=0.1, maxval=2.0),
+                                        r=pyddm.Fittable(minval=0.0, maxval=2.0),
+                                        tta_crit=pyddm.Fittable(minval=2.0, maxval=10.0))
 
-        self.model = pyddm.Model(name="Dynamic drift defined by real-time TTA and d, bounds collapsing with TTA",
+        self.model = pyddm.Model(name="Dynamic drift defined by real-time TTA and d, bounds collapsing with TTA and TTA_or",
                                drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
                                overlay=self.overlay, T_dur=self.T_dur)
