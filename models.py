@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import stats
 import pyddm
+from scipy import interpolate
 
 
 class OverlayNonDecisionGaussian(pyddm.Overlay):
@@ -21,7 +22,7 @@ class OverlayNonDecisionGaussian(pyddm.Overlay):
         newcorr = np.convolve(weights, corr, mode="full")[len(corr):(2 * len(corr))]
         newerr = np.convolve(weights, err, mode="full")[len(corr):(2 * len(corr))]
         return pyddm.Solution(newcorr, newerr, solution.model,
-                            solution.conditions, solution.undec)
+                              solution.conditions, solution.undec)
 
 
 class DriftTtaDistance(pyddm.models.Drift):
@@ -32,7 +33,6 @@ class DriftTtaDistance(pyddm.models.Drift):
     beta_tta = 1.0
 
     def get_drift(self, t, conditions, **kwargs):
-
         return self.alpha * (self.beta_tta * (conditions["tta_condition"] - t)
                              + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
                                               / conditions["tta_condition"])
@@ -53,7 +53,7 @@ class BoundCollapsingTta(pyddm.models.Bound):
 
 
 class ModelDynamicDriftCollapsingBounds:
-    T_dur = 4.5
+    T_dur = 4.0
     param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "b_0", "k", "r", "tta_crit",
                    "ndt_location", "ndt_scale"]
 
@@ -70,6 +70,41 @@ class ModelDynamicDriftCollapsingBounds:
                                         r=pyddm.Fittable(minval=0.0, maxval=2.0),
                                         tta_crit=pyddm.Fittable(minval=2.0, maxval=10.0))
 
-        self.model = pyddm.Model(name="Dynamic drift defined by real-time TTA and d, bounds collapsing with TTA and TTA_or",
-                               drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
-                               overlay=self.overlay, T_dur=self.T_dur)
+        self.model = pyddm.Model(
+            name="Dynamic drift defined by real-time TTA and d, bounds collapsing with TTA and TTA_or",
+            drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
+            overlay=self.overlay, T_dur=self.T_dur)
+
+
+class DriftGaze(DriftTtaDistance):
+    name = "Drift dynamically depends on the real-time values of TTA and distance, modulated by gaze"
+    required_parameters = ["alpha", "beta_d", "beta_tta_or", "theta", "gamma", "gaze_sample_f"]
+
+    def get_drift(self, t, conditions, **kwargs):
+        return ((self.beta_tta * (conditions["tta_condition"] - t)
+                 + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
+                                  / conditions["tta_condition"])) * max(self.gaze_sample_f(t), self.gamma)
+                - self.beta_tta_or * (conditions["tta_or_condition"] - t) * max(1 - self.gaze_sample_f(t), self.gamma)
+                - self.theta) * self.alpha
+
+
+class ModelGazeDependent(ModelDynamicDriftCollapsingBounds):
+    param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "gamma", "b_0", "k", "r", "tta_crit",
+                   "ndt_location", "ndt_scale"]
+
+    def __init__(self, gaze_sample):
+        super(ModelGazeDependent, self).__init__()
+        t = np.linspace(0, self.T_dur, len(gaze_sample))
+        gaze_sample_f = interpolate.interp1d(t, gaze_sample)
+
+        # TODO: this assumes that gaze_sample is defined over T_dur - fix this
+        self.drift = DriftGaze(alpha=pyddm.Fittable(minval=0.0, maxval=5.0),
+                               beta_d=pyddm.Fittable(minval=0.0, maxval=1.0),
+                               beta_tta_or=pyddm.Fittable(minval=0, maxval=1.0),
+                               theta=pyddm.Fittable(minval=0, maxval=20),
+                               gamma=pyddm.Fittable(minval=0, maxval=1.0),
+                               gaze_sample_f=gaze_sample_f)
+
+        self.model = pyddm.Model(name="Gaze-dependent drift, bounds collapsing with TTA and TTA_or",
+                                 drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
+                                 overlay=self.overlay, T_dur=self.T_dur)

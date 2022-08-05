@@ -1,41 +1,43 @@
 import pyddm
-
+import numpy as np
 import models
 import loss_functions
 import pandas as pd
 import helper
 import os
 
+def get_gaze_sample(simulation_params):
+    # In a typical trial, participants looked
+    # 1) at the on-ramp for a short time - 300 ms
+    # 2) at the mirror for 700 ms
+    # 3) back at the on-ramp for the rest of the trial
+    # TODO: replace this fake gaze sample with the actual average from the experiment
+    return np.concatenate([np.zeros(int(0.3/simulation_params["dt"])), np.ones(int(0.7/simulation_params["dt"])),
+                           np.zeros(int((simulation_params["duration"]-1.0)/simulation_params["dt"])+1)])
 
 def fit_model_by_condition(subj_idx=0, loss="vincent"):
-    '''
-    NB: This script can (and should) be run in parallel in several different python consoles, one subject per console
-    model_idx: 1 for the full model described in the paper; 2 for the model with fixed bounds; 3 for "vanilla" DDM
-    subj_idx: 0 to 15 to obtain individual fits, or "all" to fit to group-averaged data
-    n: number of repeated fits per condition (n>1 can be used to quickly check robustness of model fitting)
-    n_training_conditions: defines how many conditions will be included in the training set (4, 8, or 9)
-                            For `4`, training data for each condition (TTA, d) will be the decisions where both TTA and d
-                            are different from those of the current condition. For `8`, all other conditions will be included.
-    test_conditions: "all" to cross-validate model on all nine conditions, or a list of dicts with conditions for which to fit the model
-    '''
-    # print("Model %i, subj idx %s" % (model_no, str(subj_idx)))
+    # HACK: for now the model is fitted conditional on one "average" gaze sample - we assume that the same
+    #  parameter values can predict response of the model to individual gaze samples.
+    simulation_params = {"dt": 0.01, "duration": 4.0}
+    gaze_sample = get_gaze_sample(simulation_params)
 
-    model = models.ModelDynamicDriftCollapsingBounds()
+    model = models.ModelGazeDependent(gaze_sample)
+    # model = models.ModelDynamicDriftCollapsingBounds()
 
     exp_data = pd.read_csv("measures.csv")
-    exp_data = exp_data[exp_data.RT<4.5]
+    exp_data = exp_data[exp_data.RT < 4.0]
     subjects = exp_data.subj_id.unique()
 
     if subj_idx == "all":
         subj_id = "all"
         subj_data = exp_data
-        loss = loss_functions.LossWLSVincent if loss=="vincent" else pyddm.LossRobustBIC
+        loss = loss_functions.LossWLSVincent if loss == "vincent" else pyddm.LossRobustBIC
     else:
         subj_id = subjects[subj_idx]
         subj_data = exp_data[(exp_data.subj_id == subj_id)]
         loss = loss_functions.LossWLS
 
-    output_directory = "model_fit_results"
+    output_directory = "model_fit_results/gaze_dependent_model"
 
     file_name = "subj_%s_parameters_fitted.csv" % (str(subj_id))
     if not os.path.isfile(os.path.join(output_directory, file_name)):
