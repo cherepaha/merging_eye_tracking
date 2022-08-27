@@ -8,6 +8,21 @@ import csv
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+def get_mean_gaze_rate(simulation_params):
+    gaze_time_step = 0.05
+    # proportion of time the participants look at the two areas of interest -  calculated based on raw gaze data
+    p_aoi = 0.92
+
+    # First cut to the simulation duration
+    mean_gaze_rate = np.genfromtxt("mean_gaze_rate.csv")[:int(simulation_params["duration"]/gaze_time_step)+1]
+
+    # Second resample to the simulation dt
+    x = np.linspace(0, simulation_params["duration"], int(simulation_params["duration"]/simulation_params["dt"]+1))
+    xp = np.linspace(0, simulation_params["duration"], int(simulation_params["duration"]/gaze_time_step+1))
+    mean_gaze_rate_resampled = np.interp(x, xp, mean_gaze_rate)/p_aoi
+
+    return mean_gaze_rate_resampled
+
 def merge_csv(directory):
     fout = open(directory + "_parameters_fitted.csv", "w+")
     header_written = False

@@ -81,12 +81,45 @@ class DriftGaze(DriftTtaDistance):
     required_parameters = ["alpha", "beta_d", "beta_tta_or", "theta", "gamma", "gaze_sample_f"]
 
     def get_drift(self, t, conditions, **kwargs):
-        return ((self.beta_tta * (conditions["tta_condition"] - t)
-                 + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
-                                  / conditions["tta_condition"])) * max(self.gaze_sample_f(t), self.gamma)
-                - self.beta_tta_or * (conditions["tta_or_condition"] - t) * max(1 - self.gaze_sample_f(t), self.gamma)
-                - self.theta) * self.alpha
+        gaze_dependent_generalized_gap = ((self.beta_tta * (conditions["tta_condition"] - t)
+                                           + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
+                                                            / conditions["tta_condition"])) *
+                                          max(self.gaze_sample_f(t), self.gamma)
+                                          - self.beta_tta_or * (conditions["tta_or_condition"] - t) *
+                                          max(1 - self.gaze_sample_f(t), self.gamma)
+                                          - self.theta)
 
+        return self.alpha * gaze_dependent_generalized_gap
+
+class BoundCollapsingGeneralizedGap(pyddm.models.Bound):
+    name = "Bounds dynamically collapsing with the generalized gap"
+    required_parameters = ["b_0", "k", "beta_d", "beta_tta_or", "theta", "gamma", "gaze_sample_f"]
+    required_conditions = ["tta_condition", "d_condition", "tta_or_condition"]
+    beta_tta = 1.0
+
+    def get_bound(self, t, conditions, **kwargs):
+        generalized_gap = ((self.beta_tta * (conditions["tta_condition"] - t)
+                                           + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
+                                                            / conditions["tta_condition"]))
+                                          - self.beta_tta_or * (conditions["tta_or_condition"] - t)
+                                          - self.theta)
+        return self.b_0 / (1 + np.exp(-self.k * generalized_gap))
+
+class BoundCollapsingGazeDependentGeneralizedGap(pyddm.models.Bound):
+    name = "Bounds dynamically collapsing with the generalized gap"
+    required_parameters = ["b_0", "k", "beta_d", "beta_tta_or", "theta", "gamma", "gaze_sample_f"]
+    required_conditions = ["tta_condition", "d_condition", "tta_or_condition"]
+    beta_tta = 1.0
+
+    def get_bound(self, t, conditions, **kwargs):
+        gaze_dependent_generalized_gap = ((self.beta_tta * (conditions["tta_condition"] - t)
+                                           + self.beta_d * (conditions["d_condition"] - t * conditions["d_condition"]
+                                                            / conditions["tta_condition"])) *
+                                          max(self.gaze_sample_f(t), self.gamma)
+                                          - self.beta_tta_or * (conditions["tta_or_condition"] - t) *
+                                          max(1 - self.gaze_sample_f(t), self.gamma)
+                                          - self.theta)
+        return self.b_0 / (1 + np.exp(-self.k * gaze_dependent_generalized_gap))
 
 class ModelGazeDependent(ModelDynamicDriftCollapsingBounds):
     param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "gamma", "b_0", "k", "r", "tta_crit",
@@ -104,6 +137,40 @@ class ModelGazeDependent(ModelDynamicDriftCollapsingBounds):
                                theta=pyddm.Fittable(minval=0, maxval=20),
                                gamma=pyddm.Fittable(minval=0, maxval=1.0),
                                gaze_sample_f=gaze_sample_f)
+
+        self.model = pyddm.Model(name="Gaze-dependent drift, bounds collapsing with TTA and TTA_or",
+                                 drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
+                                 overlay=self.overlay, T_dur=self.T_dur)
+
+
+class ModelGazeDependentBoundGeneralizedGap(ModelDynamicDriftCollapsingBounds):
+    param_names = ["alpha", "beta_d", "beta_tta_or", "theta", "gamma", "b_0", "k", "ndt_location", "ndt_scale"]
+
+    def __init__(self, gaze_sample):
+        super(ModelGazeDependentBoundGeneralizedGap, self).__init__()
+        t = np.linspace(0, self.T_dur, len(gaze_sample))
+        gaze_sample_f = interpolate.interp1d(t, gaze_sample)
+
+        beta_d = pyddm.Fittable(minval=0.0, maxval=1.0)
+        beta_tta_or = pyddm.Fittable(minval=0, maxval=1.0)
+        theta = pyddm.Fittable(minval=0, maxval=20)
+        gamma = pyddm.Fittable(minval=0, maxval=1.0)
+
+        # this assumes that gaze_sample is defined over T_dur - fix this
+        self.drift = DriftGaze(alpha=pyddm.Fittable(minval=0.0, maxval=5.0),
+                               beta_d=beta_d,
+                               beta_tta_or=beta_tta_or,
+                               theta=theta,
+                               gamma=gamma,
+                               gaze_sample_f=gaze_sample_f)
+
+        self.bound = BoundCollapsingGeneralizedGap(b_0=pyddm.Fittable(minval=0.5, maxval=5.0),
+                                        k=pyddm.Fittable(minval=0.1, maxval=2.0),
+                                        beta_d=beta_d,
+                                        beta_tta_or=beta_tta_or,
+                                        theta=theta,
+                                        gamma=gamma,
+                                        gaze_sample_f=gaze_sample_f)
 
         self.model = pyddm.Model(name="Gaze-dependent drift, bounds collapsing with TTA and TTA_or",
                                  drift=self.drift, noise=pyddm.NoiseConstant(noise=1), bound=self.bound,
