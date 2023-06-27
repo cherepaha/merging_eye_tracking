@@ -22,8 +22,8 @@ def fit_model_by_condition(subj_idx=0, loss="vincent"):
     gaze_sample = helper.get_mean_gaze_rate(simulation_params)
 
     # model = models.ModelDynamicDriftCollapsingBounds()
-    # model = models.ModelGazeDependent(gaze_sample)
-    model = models.ModelGazeDependentBoundGeneralizedGap(gaze_sample)
+    model = models.ModelGazeDependent(gaze_sample)
+    # model = models.ModelGazeDependentBoundGeneralizedGap(gaze_sample)
 
     exp_data = pd.read_csv("measures.csv")
     exp_data = exp_data[exp_data.RT < 4.0]
