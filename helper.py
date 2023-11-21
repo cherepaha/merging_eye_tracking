@@ -8,20 +8,17 @@ import csv
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-def get_mean_gaze_rate(simulation_params):
-    gaze_time_step = 0.05
-    # proportion of time the participants look at the two areas of interest -  calculated based on raw gaze data
-    p_aoi = 0.92
+def get_constants():
+    mirror_x_min = 175
+    mirror_x_max = 535
+    mirror_y_min = 90
+    mirror_y_max = 360
+    front_x_min = 545
+    front_x_max = 1380
+    front_y_min = 410
+    front_y_max = 680
 
-    # First cut to the simulation duration
-    mean_gaze_rate = np.genfromtxt("mean_gaze_rate.csv")[:int(simulation_params["duration"]/gaze_time_step)+1]
-
-    # Second resample to the simulation dt
-    x = np.linspace(0, simulation_params["duration"], int(simulation_params["duration"]/simulation_params["dt"]+1))
-    xp = np.linspace(0, simulation_params["duration"], int(simulation_params["duration"]/gaze_time_step+1))
-    mean_gaze_rate_resampled = np.interp(x, xp, mean_gaze_rate)/p_aoi
-
-    return mean_gaze_rate_resampled
+    return mirror_x_min, mirror_x_max, mirror_y_min, mirror_y_max, front_x_min, front_x_max, front_y_min, front_y_max
 
 def merge_csv(directory):
     fout = open(directory + "_parameters_fitted.csv", "w+")
@@ -69,36 +66,26 @@ def write_to_csv(directory, filename, array, write_mode="a"):
         writer = csv.writer(csvfile, delimiter=",")
         writer.writerow(array)
 
-
-def fit_model(model, training_data, loss_function):
-    training_sample = pyddm.Sample.from_pandas_dataframe(df=training_data, rt_column_name="RT",
-                                                         correct_column_name="is_gap_accepted")
-    fitted_model = pyddm.fit_adjust_model(sample=training_sample, model=model, lossfunction=loss_function, verbose=False)
-    # pyddm.plot.plot_fit_diagnostics(model=fitted_model, sample=training_sample)
-
-    return fitted_model
-
-
 def get_psf_ci(data):
     # psf: psychometric function
     # ci: dataframe with confidence intervals for probability per coherence
-    d_conditions = np.sort(data.d_condition.unique())
+    d_conditions = np.sort(data.d.unique())
 
-    psf = np.array([len(data[data.is_gap_accepted & (data.d_condition == d_condition)])
-                    / len(data[data.d_condition == d_condition])
-                    if len(data[(data.d_condition == d_condition)]) > 0 else np.NaN
-                    for d_condition in np.sort(data.d_condition.unique())])
+    psf = np.array([len(data[data.is_gap_accepted & (data.d == d)])
+                    / len(data[data.d == d])
+                    if len(data[(data.d == d)]) > 0 else np.NaN
+                    for d in d_conditions])
 
     ci = pd.DataFrame(psf, columns=["p_go"], index=d_conditions)
 
-    n = [len(data[(data.d_condition == d_condition)]) for d_condition in d_conditions]
+    n = [len(data[(data.d == d)]) for d in d_conditions]
     ci["ci_l"] = ci["p_go"] - np.sqrt(psf * (1 - psf) / n)
     ci["ci_r"] = ci["p_go"] + np.sqrt(psf * (1 - psf) / n)
 
-    return ci.reset_index().rename(columns={"index": "d_condition"})
+    return ci.reset_index().rename(columns={"index": "d"})
 
 
-def get_mean_sem(data, var="RT", groupby_var="tta_condition", n_cutoff=2):
+def get_mean_sem(data, var="RT", groupby_var="tta", n_cutoff=2):
     mean = data.groupby(groupby_var)[var].mean()
     sem = data.groupby(groupby_var)[var].apply(lambda x: scipy.stats.sem(x, axis=None, ddof=0))
     n = data.groupby(groupby_var).size()
@@ -107,152 +94,3 @@ def get_mean_sem(data, var="RT", groupby_var="tta_condition", n_cutoff=2):
 
     return data_mean_sem
 
-
-def plot_all_subj_p_go(ax, exp_measures, d_condition, marker, color, marker_offset=0):
-    between_subj_mean = exp_measures[(exp_measures.d_condition == d_condition)].groupby(
-        ["subj_id", "tta_condition"]).mean()
-    data_subj_d_measures = get_mean_sem(between_subj_mean.reset_index(), var="is_go_decision", n_cutoff=2)
-    ax.errorbar(data_subj_d_measures.index + marker_offset, data_subj_d_measures["mean"],
-                yerr=data_subj_d_measures["sem"],
-                ls="", marker=marker, ms=9, color=color)
-
-
-def plot_subj_p_go(ax, exp_measures, d_condition, subj_id, marker, color):
-    data_subj_d_measures = exp_measures[(exp_measures.subj_id == subj_id) & (exp_measures.d_condition == d_condition)]
-    psf_ci = get_psf_ci(data_subj_d_measures)
-    ax.plot(psf_ci.tta_condition, psf_ci.p_go, ls="", marker=marker, ms=9, color=color, zorder=10)
-    ax.vlines(x=psf_ci.tta_condition, ymin=psf_ci.ci_l, ymax=psf_ci.ci_r, color=color, zorder=10)
-
-
-def plot_subj_rt(ax, exp_measures, d_condition, subj_id, marker, color, marker_offset=0):
-    if subj_id == "all":
-        between_subj_mean = exp_measures[
-            (exp_measures.d_condition == d_condition) & (exp_measures.is_go_decision)].groupby(
-            ["subj_id", "tta_condition"]).mean()
-        measures = between_subj_mean.reset_index()
-    else:
-        measures = exp_measures[(exp_measures.subj_id == subj_id) & (exp_measures.d_condition == d_condition) & (
-            exp_measures.is_go_decision)]
-
-    if len(measures) > 0:
-        measures_mean_sem = get_mean_sem(measures, var="RT", n_cutoff=2)
-        ax.errorbar(measures_mean_sem.index + marker_offset, measures_mean_sem["mean"], yerr=measures_mean_sem["sem"],
-                    ls="", marker=marker, ms=9, color=color)
-
-
-def plot_condition_vincentized_dist(ax, condition, condition_data, kind="cdf"):
-    # colors = dict(zip([90,120,150], [plt.cm.viridis(r) for r in np.linspace(0.1,0.7,3)]))
-    # markers={90: "o", 120: "s", 150: "^"}
-    #     q = [0.1, 0.3, 0.5, 0.7, 0.9]
-    q = np.linspace(0.01, 0.99, 15)
-    condition_quantiles = condition_data.groupby("subj_id").apply(lambda d: np.quantile(a=d.RT, q=q)).mean()
-
-    rt_range = np.linspace(condition_quantiles.min(), condition_quantiles.max(), len(q))
-    step = rt_range[1] - rt_range[0]
-    rt_grid = np.concatenate([rt_range[:3] - 3 * step, rt_range, rt_range[-3:] + step * 3])
-    vincentized_cdf = np.interp(rt_grid, condition_quantiles, q, left=0, right=1)
-    # vincentized_pdf = differentiate(rt_grid, vincentized_cdf)
-
-    ax.plot(rt_grid, vincentized_cdf, label="Data", color="grey", ls="", ms=9, marker="o")
-    ax.set_ylim([-0.05, 1.1])
-    ax.set_yticks([0.0, 0.5, 1.0])
-
-
-def decorate_axis(ax, condition):
-    if (((condition["d"] == 90) & (condition["TTA"] == 6))
-            | ((condition["d"] == 90) & (condition["TTA"] == 5))
-            | ((condition["d"] == 120) & (condition["TTA"] == 4))):
-        ax.text(0.5, 1.02, "TTA=%is" % condition["TTA"], fontsize=16, transform=ax.transAxes,
-                horizontalalignment="center", verticalalignment="center")
-
-    if condition["TTA"] == 6:
-        ax.text(1.0, 0.5, "d=%im" % condition["d"], fontsize=16, transform=ax.transAxes, rotation=-90,
-                horizontalalignment="center", verticalalignment="center")
-
-
-def plot_vincentized_dist(fig, axes, exp_data, model_rts, model_color="black", plot_data=True):
-    conditions = [{"d": d, "TTA": TTA}
-                  for d in sorted(exp_data.d_condition.unique())
-                  for TTA in sorted(exp_data.tta_condition.unique())]
-
-    for (ax, condition) in zip(axes.flatten(), conditions):
-        condition_data = exp_data[(exp_data.is_go_decision)
-                                  & (exp_data.d_condition == condition["d"])
-                                  & (exp_data.tta_condition == condition["TTA"])]
-        if len(condition_data) >= 25:
-            # Group-averaged data
-            if plot_data:
-                plot_condition_vincentized_dist(ax, condition, condition_data)
-
-            # Model
-            if not model_rts is None:
-                condition_rts = model_rts[(model_rts.subj_id == "all")
-                                          & (model_rts.d_condition == condition["d"])
-                                          & (model_rts.tta_condition == condition["TTA"])]
-                ax.plot(condition_rts.t, condition_rts.rt_corr_distr, color=model_color, alpha=0.8,
-                        lw=2)  # , color="C%i" % (model_no-1))
-        else:
-            ax.set_axis_off()
-
-        if plot_data:
-            decorate_axis(ax, condition)
-
-            ax.set_xlabel("")
-            ax.set_xlim((0, 1.5))
-            sns.despine(offset=5, trim=True)
-
-    if plot_data:
-        fig.text(0.43, 0.04, "Response time, s", fontsize=16)
-        fig.text(0.04, 0.15, "Cumulative distribution function", fontsize=16, rotation=90)
-
-    return fig, axes
-
-def plot_cross_validation(exp_data, model_measures):
-    model_measures = model_measures[(model_measures.tta_condition>=4.0) & (model_measures.tta_condition<=6.0)]
-
-    d_conditions = [90, 120, 150]
-    colors = [plt.cm.viridis(r) for r in np.linspace(0.1,0.7,len(d_conditions))]
-    markers=["o", "s", "^"]
-    marker_size=9
-    marker_offset = 0.05
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6,3))
-
-    for d_condition, marker, color in zip(d_conditions, markers, colors):
-        model_subj_d_measures = model_measures[(model_measures.subj_id=="all")  & (model_measures.d_condition==d_condition)]
-        # Model
-        ax1.plot(model_subj_d_measures.tta_condition+marker_offset, model_subj_d_measures["is_go_decision"],
-                    color=color, label=d_condition, ls="--", lw=1, marker=marker, ms=marker_size, fillstyle="none")
-        ax2.plot(model_subj_d_measures.tta_condition+marker_offset, model_subj_d_measures["RT"],
-                color=color, label=d_condition, ls="--", lw=1, marker=marker, ms=marker_size, fillstyle="none")
-
-        # Data
-        plot_all_subj_p_go(ax1, exp_data, d_condition, marker, color, -marker_offset)
-        plot_subj_rt(ax2, exp_data, d_condition, "all", marker, color, -marker_offset)
-
-    fig.text(0.35, -0.05, "Time-to-arrival (TTA), s", fontsize=16)
-
-    ax1.set_xticks([4, 5, 6])
-    ax2.set_xticks([4, 5, 6])
-
-    ax1.legend().remove()
-    ax2.legend().remove()
-
-    ax1.set_ylabel("Probability of go", fontsize=16)
-    ax2.set_ylabel("Response time", fontsize=16)
-
-    ax1.set_ylim((0.0, 1.0))
-    ax2.set_ylim((0.3, 0.8))
-
-    sns.despine(offset=5, trim=True)
-    plt.tight_layout()
-
-    legend_elements = ([Line2D([0], [0], color=color, marker=marker, ms=marker_size, lw=1, ls="--", fillstyle="none", label="Model predictions,")
-                           for d_condition, marker, color in zip(d_conditions, markers, colors)]
-                       + [Line2D([0], [0], color=color, marker=marker, ms=marker_size, lw=0, label="data, d=%im" % (d_condition))
-                           for d_condition, marker, color in zip(d_conditions, markers, colors)])
-
-    fig.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=16, handlelength=1.5, columnspacing=0.2,
-               frameon=False, ncol=2)
-
-    return fig
