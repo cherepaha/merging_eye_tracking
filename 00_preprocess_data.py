@@ -30,10 +30,7 @@ for participant_id in range(1, 27):
     # Discard eye movements within one frame, only use the first record per frame
     participant_df = participant_df.groupby(["TRIAL_INDEX", "VIDEO_FRAME_INDEX"]).first().reset_index()
     participant_df["participant"] = participant_id
-
-    # participant 17's data misses video number and frame index so we exclude their data
-    if not participant_id == 17:
-        participant_dfs.append(participant_df)
+    participant_dfs.append(participant_df)
 
 data = pd.concat(participant_dfs)
 
