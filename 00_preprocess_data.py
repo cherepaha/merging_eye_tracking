@@ -12,6 +12,7 @@ def get_trial_metrics(trial):
 # download the data from https://osf.io/43bng/, update the data path to the directory with the downloaded data
 raw_data_path = "../../surfdrive/data/merging_eye_tracking/raw"
 participant_raw_data_path = os.path.join(raw_data_path, "Part%i/Output/Results_xy.txt")
+processed_data_path = "data/processed"
 
 mirror_x_min, mirror_x_max, mirror_y_min, mirror_y_max, front_x_min, front_x_max, front_y_min, front_y_max = helper.get_constants()
 
@@ -80,9 +81,13 @@ data["RT"] /= 1000
 data = data.join(video_conditions, on="video")
 data = data.sort_values(["participant", "trial", "t"], ascending=True)
 
+# saving the resulting data
+if not os.path.exists(processed_data_path):
+    os.makedirs(processed_data_path)
+
 columns_to_save = ["participant", "trial", "video", "tta", "d", "time_budget", "decision", "RT", "is_gap_accepted",
                    "t", "eye_x", "eye_y", "AOI", "is_looking_at_mirror", "is_looking_in_front", "is_looking_elsewhere"]
-data[columns_to_save].to_csv("processed_eye_data.csv", index=False)
+data[columns_to_save].to_csv(os.path.join(processed_data_path, "processed_eye_data.csv"), index=False)
 
 # get and save trial-level metrics (relative dwell time on the mirror and presence of early fixations on the mirror)
 metrics = (data.groupby(["participant", "trial"])
@@ -90,4 +95,4 @@ metrics = (data.groupby(["participant", "trial"])
            .join(data.groupby(["participant", "trial"]).first()[["tta", "d", "time_budget", "decision", "RT", "is_gap_accepted"]])
            .reset_index())
 
-metrics.to_csv("metrics.csv", index=False)
+metrics.to_csv(os.path.join(processed_data_path, "metrics.csv"), index=False)
