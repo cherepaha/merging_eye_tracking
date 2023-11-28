@@ -25,13 +25,6 @@ video_conditions = pd.DataFrame.from_dict(data={1: [4, 20, 4], 2: [4, 20, 6], 3:
                                           orient="index", columns=["time_budget", "d", "tta"])
 video_conditions.index.name = "video"
 
-# participant_dfs = []
-#
-# for participant_id in range(3, 27):
-#     participant_df = pd.read_csv(participant_raw_data_path % participant_id, sep=",")
-#     participant_dfs.append(participant_df)
-#
-# data = pd.concat(participant_dfs)
 data = pd.concat([pd.read_csv(participant_raw_data_path % participant_id, sep=",") for participant_id in range(3, 27)])
 
 # exclude 6 trials with no indicated decision
