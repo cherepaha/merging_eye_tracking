@@ -33,7 +33,7 @@ def resample_trajectory(trajectory, frequency=100):
 
 def get_psf_ci(data):
     # psf: psychometric function
-    # ci: dataframe with confidence intervals for probability per coherence
+    # ci: dataframe with confidence intervals for probability per condition
     d_conditions = np.sort(data.d.unique())
 
     psf = np.array([len(data[data.is_gap_accepted & (data.d == d)])
@@ -50,9 +50,12 @@ def get_psf_ci(data):
     return ci.reset_index().rename(columns={"index": "d"})
 
 
-def get_mean_sem(data, var="RT", groupby_var="tta", n_cutoff=2):
+def get_mean_sem(data, var="RT", groupby_var="tta", n_cutoff=2, ci_95=False):
     mean = data.groupby(groupby_var)[var].mean()
     sem = data.groupby(groupby_var)[var].apply(lambda x: scipy.stats.sem(x, axis=None, ddof=0))
+    if ci_95:
+        sem *= 1.96
+
     n = data.groupby(groupby_var).size()
     data_mean_sem = pd.DataFrame({"mean": mean, "sem": sem, "n": n}, index=mean.index)
     data_mean_sem = data_mean_sem[data_mean_sem.n > n_cutoff]
